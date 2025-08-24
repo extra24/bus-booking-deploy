@@ -1,0 +1,21 @@
+config:
+  target: "https://<HTTP_API_ID>.execute-api.ap-northeast-2.amazonaws.com/prod"
+  phases:
+    - duration: 30
+      arrivalRate: 20
+    - duration: 60
+      arrivalRate: 50
+  defaults:
+    headers:
+      content-type: application/json
+
+scenarios:
+  - name: Book Bus
+    flow:
+      - post:
+          url: "/api/book-bus"
+          json:
+            userId: "u-{{ $randomNumber(1,1000000) }}"
+            route: "서울→부산"
+            date: "2025-10-06"
+            passengers: 1

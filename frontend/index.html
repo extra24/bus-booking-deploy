@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <title>버스 예매 시스템</title>
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      body {
+        font-family: Inter, system-ui, Arial;
+        background: #f3f4f6;
+      }
+      code {
+        word-break: break-all;
+      }
+    </style>
+  </head>
+  <body class="flex items-center justify-center min-h-screen p-4">
+    <div class="bg-white p-8 rounded-2xl shadow-xl w-full max-w-lg">
+      <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">
+        🚌 버스 예매 시스템
+      </h1>
+
+      <div class="space-y-4">
+        <div>
+          <label class="block text-sm font-medium text-gray-700">노선</label>
+          <select
+            id="route"
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200"
+          >
+            <option>서울→부산</option>
+            <option>서울→광주</option>
+            <option>부산→서울</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">날짜</label>
+          <input
+            type="date"
+            id="date"
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+          />
+        </div>
+        <div>
+          <label class="block text-sm font-medium text-gray-700">인원</label>
+          <input
+            type="number"
+            id="passengers"
+            min="1"
+            value="1"
+            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+          />
+        </div>
+        <button
+          id="book"
+          class="w-full py-2 px-4 rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+        >
+          예매하기
+        </button>
+      </div>
+
+      <div
+        class="mt-6 p-4 bg-gray-100 rounded-lg text-sm text-gray-700 font-mono"
+      >
+        <div class="flex items-center justify-between">
+          <h2 class="text-base font-semibold text-gray-800">시스템 현황</h2>
+        </div>
+        <table class="w-full mt-2">
+          <tbody class="divide-y divide-gray-300">
+            <tr>
+              <td class="py-1">총 처리 건수(Processed):</td>
+              <td id="processed" class="py-1 text-right">0</td>
+            </tr>
+            <tr>
+              <td class="py-1">예매 성공률:</td>
+              <td id="rate" class="py-1 text-right">0%</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="mt-4 text-xs text-gray-500 space-y-1"></div>
+    </div>
+
+    <script>
+      const HTTP_API_BASE =
+        "https://abcd1234.execute-api.ap-northeast-2.amazonaws.com/prod";
+      const STATS_S3_URL =
+        "https://bus-booking-stats.s3.ap-northeast-2.amazonaws.com/stats.json";
+
+      document.getElementById("httpUrl").textContent = HTTP_API_BASE;
+      document.getElementById("statsUrl").textContent = STATS_S3_URL;
+
+      const elProcessed = document.getElementById("processed");
+      const elRate = document.getElementById("rate");
+      const elDate = document.getElementById("date");
+      elDate.value = new Date().toISOString().slice(0, 10);
+
+      function renderStats(s) {
+        const p = Number(s?.processed ?? 0);
+        const succ = Number(s?.success ?? 0);
+        elProcessed.textContent = String(p);
+        elRate.textContent = p > 0 ? ((succ / p) * 100).toFixed(1) + "%" : "0%";
+      }
+
+      document.getElementById("book").addEventListener("click", async () => {
+        const body = {
+          userId: "user-" + Math.random().toString(36).slice(2, 9),
+          route: document.getElementById("route").value,
+          date: elDate.value,
+          passengers: Math.max(
+            1,
+            Number(document.getElementById("passengers").value || 1)
+          ),
+        };
+        try {
+          const res = await fetch(`${HTTP_API_BASE}/api/book-bus`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          bumpFast(); // 예매 직후 10초 빠른 폴링
+        } catch (e) {
+          alert("요청 실패: " + (e?.message || e));
+        }
+      });
+
+      // --- S3 폴링 (ETag + 가변 주기) ---
+      let etag = null,
+        timer = null;
+      const normal = 15000; // 평소 15s
+      const bg = 60000; // 백그라운드 60s
+
+      async function fetchStats() {
+        try {
+          const headers = etag ? { "If-None-Match": etag } : {};
+          const res = await fetch(STATS_S3_URL, { headers, cache: "no-store" });
+          if (res.status === 304) return;
+          if (!res.ok) throw new Error(res.status);
+          const json = await res.json().catch(() => ({}));
+          renderStats(json);
+          const t = res.headers.get("ETag");
+          if (t) etag = t;
+        } catch {}
+      }
+      function schedule(ms) {
+        clearInterval(timer);
+        timer = setInterval(fetchStats, ms);
+      }
+      function bumpFast(ms = 10000) {
+        schedule(1500);
+        setTimeout(() => schedule(document.hidden ? bg : normal), ms);
+      }
+      document.addEventListener("visibilitychange", () =>
+        schedule(document.hidden ? bg : normal)
+      );
+      fetchStats();
+      schedule(normal);
+    </script>
+  </body>
+</html>
