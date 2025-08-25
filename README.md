@@ -107,7 +107,7 @@
 > 큐 ARN/URL은 나중에 Lambda 환경변수/권한에서 필요함.
 
 - 유형 : **FIFO**
-- 이름 : `aram-queue`
+- 이름 : `aram-queue.fifo`
 - 가시성 타임아웃: **60초** (consumer 처리시간에 맞춰 조정)
 
 ### 4. Lambda 역할(IAM)
@@ -141,7 +141,7 @@
     {
       "Effect": "Allow",
       "Action": ["sqs:GetQueueUrl", "sqs:SendMessage"],
-      "Resource": "arn:aws:sqs:ap-northeast-2:<계정ID>:aram-queue"
+      "Resource": "arn:aws:sqs:ap-northeast-2:<계정ID>:aram-queue.fifo"
     }
   ]
 }
@@ -195,7 +195,7 @@
 ```
 REGION=ap-northeast-2
 STATS_TABLE=aram-stats
-QUEUE_NAME=aram-queue
+QUEUE_NAME=aram-queue.fifo
 ```
 
 - 기본 설정: 메모리 256MB / 타임아웃 5s 권장
