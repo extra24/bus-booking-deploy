@@ -224,6 +224,7 @@ S3_KEY=stats.json
 
 ### 6. API Gateway (HTTP) 연결
 
+- API 이름 : `aram-http-api`
 - HTTP API 생성 → 통합(Integration): Lambda = `aram-producer`
 - 라우트 추가
   - `POST /api/book-bus` → `aram-producer`
