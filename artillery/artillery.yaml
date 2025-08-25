@@ -1,10 +1,10 @@
 config:
-  target: "https://<HTTP_API_ID>.execute-api.ap-northeast-2.amazonaws.com/prod"
+  target: "https://x9dhnr5yy7.execute-api.ap-northeast-2.amazonaws.com"
   phases:
+    - duration: 20
+      arrivalRate: 1
     - duration: 30
-      arrivalRate: 20
-    - duration: 60
-      arrivalRate: 50
+      arrivalRate: 1
   defaults:
     headers:
       content-type: application/json
@@ -17,5 +17,5 @@ scenarios:
           json:
             userId: "u-{{ $randomNumber(1,1000000) }}"
             route: "서울→부산"
-            date: "2025-10-06"
+            date: "2025-08-25"
             passengers: 1
