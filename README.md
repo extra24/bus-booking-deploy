@@ -63,6 +63,18 @@
 </CORSConfiguration>
 ```
 
+- json으로 생성
+```json
+[
+  {
+    "AllowedHeaders": ["*"],
+    "AllowedMethods": ["GET", "PUT", "POST"],
+    "AllowedOrigins": ["*"],
+    "ExposeHeaders": ["ETag"]
+  }
+]
+```
+
 #### 5) 파일 업로드
 
 - `index.html` 업로드 (콘텐츠 유형: text/html)
@@ -78,10 +90,14 @@
 - 용량 모드: **온디맨드(PAY_PER_REQUEST)**
 
 #### 2) 초기 아이템 추가
-
+- 항목 생성 > JSON 으로 편집
 ```
-id = "total"
-requests = 0(Number), processed = 0(Number), success = 0(Number)
+{
+  "id": { "S": "total" },
+  "requests": { "N": "0" },
+  "processed": { "N": "0" },
+  "success": { "N": "0" }
+}
 ```
 
 ### 3. SQS
@@ -90,7 +106,7 @@ requests = 0(Number), processed = 0(Number), success = 0(Number)
 
 > 큐 ARN/URL은 나중에 Lambda 환경변수/권한에서 필요함.
 
-- 유형 : **표준(Standard)**
+- 유형 : **FIFO**
 - 이름 : `aram-queue`
 - 가시성 타임아웃: **60초** (consumer 처리시간에 맞춰 조정)
 
