@@ -21,6 +21,7 @@
         🚌 버스 예매 시스템
       </h1>
 
+      <!-- 폼 -->
       <div class="space-y-4">
         <div>
           <label class="block text-sm font-medium text-gray-700">노선</label>
@@ -59,6 +60,7 @@
         </button>
       </div>
 
+      <!-- 시스템 현황 -->
       <div
         class="mt-6 p-4 bg-gray-100 rounded-lg text-sm text-gray-700 font-mono"
       >
@@ -72,35 +74,118 @@
               <td id="processed" class="py-1 text-right">0</td>
             </tr>
             <tr>
+              <td class="py-1">성공 건수(Success):</td>
+              <td id="success" class="py-1 text-right">0</td>
+            </tr>
+            <tr>
               <td class="py-1">예매 성공률:</td>
               <td id="rate" class="py-1 text-right">0%</td>
+            </tr>
+            <!-- <tr>
+              <td class="py-1">대기 중(큐)</td>
+              <td id="qVisible" class="py-1 text-right">0</td>
+            </tr>
+            <tr>
+              <td class="py-1">처리 중(인플라이트)</td>
+              <td id="qInFlight" class="py-1 text-right">0</td>
+            </tr>
+            <tr>
+              <td class="py-1">최고 지연(초)</td>
+              <td id="qOldest" class="py-1 text-right">0</td>
+            </tr> -->
+            <tr>
+              <td class="py-1">처리 속도(최근 10초)</td>
+              <td id="tps" class="py-1 text-right">0/s</td>
+            </tr>
+            <tr>
+              <td class="py-1">스냅샷 갱신</td>
+              <td id="updatedAt" class="py-1 text-right">-</td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <div class="mt-4 text-xs text-gray-500 space-y-1"></div>
+      <!-- raw stats.json 보기 -->
+      <details class="mt-4">
+        <summary class="cursor-pointer text-sm text-gray-600">
+          stats.json 원본 보기
+        </summary>
+        <pre
+          id="raw"
+          class="mt-2 p-3 bg-gray-50 rounded-lg text-xs overflow-x-auto"
+        ></pre>
+      </details>
+
+      <div id="err" class="mt-3 text-xs text-red-600"></div>
     </div>
 
     <script>
+      // $default 스테이지 사용 중이므로 /prod 없음
       const HTTP_API_BASE =
-        "https://abcd1234.execute-api.ap-northeast-2.amazonaws.com/prod";
+        "https://x9dhnr5yy7.execute-api.ap-northeast-2.amazonaws.com";
+      // S3 REST(HTTPS) 엔드포인트 사용
       const STATS_S3_URL =
-        "https://bus-booking-stats.s3.ap-northeast-2.amazonaws.com/stats.json";
-
-      document.getElementById("httpUrl").textContent = HTTP_API_BASE;
-      document.getElementById("statsUrl").textContent = STATS_S3_URL;
+        "https://aram-app-bucket.s3.ap-northeast-2.amazonaws.com/stats.json";
 
       const elProcessed = document.getElementById("processed");
       const elRate = document.getElementById("rate");
+      const elSuccess = document.getElementById("success");
+      // const elQv = document.getElementById("qVisible");
+      // const elQi = document.getElementById("qInFlight");
+      // const elQo = document.getElementById("qOldest");
+      const elTps = document.getElementById("tps");
+      const elUpdated = document.getElementById("updatedAt");
+      const elRaw = document.getElementById("raw");
+      const elErr = document.getElementById("err");
       const elDate = document.getElementById("date");
       elDate.value = new Date().toISOString().slice(0, 10);
+
+      let lastSnap = null;
+
+      function formatKST(ms) {
+        try {
+          return new Date(ms).toLocaleString("ko-KR", {
+            timeZone: "Asia/Seoul",
+          });
+        } catch {
+          return String(ms);
+        }
+      }
 
       function renderStats(s) {
         const p = Number(s?.processed ?? 0);
         const succ = Number(s?.success ?? 0);
+        // const qv = Number(s?.queueVisible ?? 0);
+        // const qi = Number(s?.queueInFlight ?? 0);
+        // const qo = Number(s?.queueOldestAgeSec ?? 0);
+        const ts = Number(s?.updatedAt ?? Date.now());
+
+        // 총 처리/성공률
         elProcessed.textContent = String(p);
+        elSuccess.textContent = String(succ);
         elRate.textContent = p > 0 ? ((succ / p) * 100).toFixed(1) + "%" : "0%";
+
+        // 큐 상태
+        // elQv.textContent = String(qv);
+        // elQi.textContent = String(qi);
+        // elQo.textContent = String(qo);
+
+        // 최근 처리속도(지난 스냅샷 대비)
+        let tps = 0;
+        if (lastSnap) {
+          const dp = p - lastSnap.p;
+          const dt = (ts - lastSnap.ts) / 1000;
+          if (dt > 0) tps = Math.max(0, dp / dt);
+        }
+        elTps.textContent = tps.toFixed(1) + "/s";
+
+        // 갱신 시각
+        elUpdated.textContent = formatKST(ts);
+
+        // raw 표시
+        elRaw.textContent = JSON.stringify(s, null, 2);
+
+        lastSnap = { p, ts };
       }
 
       document.getElementById("book").addEventListener("click", async () => {
@@ -112,7 +197,12 @@
             1,
             Number(document.getElementById("passengers").value || 1)
           ),
+          // 선택: requestId 넣으면 FIFO 중복 제거 더 명확
+          requestId: crypto.randomUUID
+            ? crypto.randomUUID()
+            : String(Date.now()) + "-" + Math.random(),
         };
+        elErr.textContent = "";
         try {
           const res = await fetch(`${HTTP_API_BASE}/api/book-bus`, {
             method: "POST",
@@ -122,34 +212,39 @@
           if (!res.ok) throw new Error(`HTTP ${res.status}`);
           bumpFast(); // 예매 직후 10초 빠른 폴링
         } catch (e) {
-          alert("요청 실패: " + (e?.message || e));
+          elErr.textContent = "요청 실패: " + (e?.message || e);
+          console.error(e);
         }
       });
 
       // --- S3 폴링 (ETag + 가변 주기) ---
       let etag = null,
         timer = null;
-      const normal = 15000; // 평소 15s
-      const bg = 60000; // 백그라운드 60s
+      const normal = 1000; // 평소 1s
+      const bg = 15000; // 백그라운드 15s
 
       async function fetchStats() {
         try {
           const headers = etag ? { "If-None-Match": etag } : {};
           const res = await fetch(STATS_S3_URL, { headers, cache: "no-store" });
-          if (res.status === 304) return;
-          if (!res.ok) throw new Error(res.status);
+          if (res.status === 304) return; // 변경 없음
+          if (!res.ok) throw new Error(`GET stats.json ${res.status}`);
           const json = await res.json().catch(() => ({}));
-          renderStats(json);
           const t = res.headers.get("ETag");
           if (t) etag = t;
-        } catch {}
+          renderStats(json);
+          elErr.textContent = "";
+        } catch (e) {
+          console.error("stats fetch failed:", e);
+          elErr.textContent = "stats.json 갱신 실패: " + (e?.message || e);
+        }
       }
       function schedule(ms) {
         clearInterval(timer);
         timer = setInterval(fetchStats, ms);
       }
-      function bumpFast(ms = 10000) {
-        schedule(1500);
+      function bumpFast(ms = 12000) {
+        schedule(500);
         setTimeout(() => schedule(document.hidden ? bg : normal), ms);
       }
       document.addEventListener("visibilitychange", () =>
